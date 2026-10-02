@@ -10,7 +10,7 @@ const TAVILY_API_KEY = process.env.TAVILY_API_KEY || 'tvly-dev-3TUrvN-8nP8g8qH4s
 // ========== 搜索接口 ==========
 app.get('/api/search', async (req, res) => {
     const q = (req.query.q || '').trim();
-    const type = req.query.type || 'web';   // web / news / images
+    const type = req.query.type || 'web';
 
     if (!q) {
         return res.status(400).json({ error: '缺少查询参数 q' });
@@ -64,10 +64,11 @@ app.get('/api/search', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-// ========== 翻译接口（Google clients5 端点） ==========
+
+// ========== 翻译接口（clients5） ==========
 app.get('/api/translate', async (req, res) => {
     const text = (req.query.text || '').trim();
-    const to = (req.query.to || 'zh-CN').replace('-CN', '');  // clients5 用 "zh" 不是 "zh-CN"
+    const to = (req.query.to || 'zh-CN').replace('-CN', '');
     const from = req.query.from || 'auto';
 
     if (!text) {
@@ -93,7 +94,6 @@ app.get('/api/translate', async (req, res) => {
 
         const data = await r.json();
 
-        // clients5 返回格式：["译文"] 或 [["译文","源语言"]]
         let translated = '';
         if (Array.isArray(data)) {
             if (Array.isArray(data[0])) {
@@ -121,4 +121,14 @@ app.get('/api/translate', async (req, res) => {
         console.error('翻译失败：', e);
         res.status(500).json({ error: e.message });
     }
+});
+
+// ========== 健康检查 ==========
+app.get('/', (req, res) => {
+    res.send('Tavily 搜索后端 + 翻译服务 已运行');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`服务器已启动，监听端口 ${PORT}`);
 });
