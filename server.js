@@ -64,11 +64,10 @@ app.get('/api/search', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-
-// ========== 翻译接口（MyMemory） ==========
+// ========== 翻译接口（Google clients5 端点） ==========
 app.get('/api/translate', async (req, res) => {
     const text = (req.query.text || '').trim();
-    const to = req.query.to || 'zh-CN';
+    const to = (req.query.to || 'zh-CN').replace('-CN', '');  // clients5 用 "zh" 不是 "zh-CN"
     const from = req.query.from || 'auto';
 
     if (!text) {
@@ -76,13 +75,15 @@ app.get('/api/translate', async (req, res) => {
     }
 
     try {
-        // MyMemory 需要明确的源语言。auto 时默认 en（多数搜索结果是英文）
-        const srcLang = from === 'auto' ? 'en' : from;
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${srcLang}|${to}`;
+        const srcLang = from === 'auto' ? 'auto' : from;
+        const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${srcLang}&tl=${to}&q=${encodeURIComponent(text)}`;
 
         const r = await fetch(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Referer': 'https://www.google.com/'
             }
         });
 
@@ -92,13 +93,20 @@ app.get('/api/translate', async (req, res) => {
 
         const data = await r.json();
 
-        // MyMemory 返回格式：{ responseData: { translatedText: "..." }, responseStatus: 200 }
-        const translated = data?.responseData?.translatedText || '';
+        // clients5 返回格式：["译文"] 或 [["译文","源语言"]]
+        let translated = '';
+        if (Array.isArray(data)) {
+            if (Array.isArray(data[0])) {
+                translated = (data[0] || []).map(item => item[0] || '').join('');
+            } else {
+                translated = data[0] || '';
+            }
+        }
 
         if (!translated) {
             return res.status(500).json({
                 error: '翻译结果为空',
-                detail: data?.responseDetails || '未知错误'
+                detail: JSON.stringify(data).substring(0, 200)
             });
         }
 
@@ -113,14 +121,4 @@ app.get('/api/translate', async (req, res) => {
         console.error('翻译失败：', e);
         res.status(500).json({ error: e.message });
     }
-});
-
-// ========== 健康检查 ==========
-app.get('/', (req, res) => {
-    res.send('Tavily 搜索后端 + 翻译服务 已运行');
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`服务器已启动，监听端口 ${PORT}`);
 });
