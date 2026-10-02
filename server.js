@@ -74,3 +74,41 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`服务器已启动，监听端口 ${PORT}`);
 });
+// ========== 翻译接口 ==========
+app.get('/api/translate', async (req, res) => {
+    const text = req.query.text || '';
+    const to = req.query.to || 'zh-CN';
+    const from = req.query.from || 'auto';
+
+    if (!text) {
+        return res.status(400).json({ error: '缺少 text 参数' });
+    }
+
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
+        const r = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        if (!r.ok) {
+            return res.status(r.status).json({ error: '翻译服务返回 ' + r.status });
+        }
+
+        const data = await r.json();
+        // Google 返回格式：[[["译文","原文",...],...],...]
+        const translated = (data[0] || []).map(item => item[0]).filter(Boolean).join('');
+        const detectedLang = data[2] || from;
+
+        res.json({
+            text: text,
+            translated: translated,
+            from: detectedLang,
+            to: to
+        });
+    } catch (e) {
+        console.error('翻译失败：', e);
+        res.status(500).json({ error: e.message });
+    }
+});
