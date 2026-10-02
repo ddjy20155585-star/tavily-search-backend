@@ -7,6 +7,7 @@ app.use(cors());
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || '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';
 
+// ========== 搜索接口 ==========
 app.get('/api/search', async (req, res) => {
     const q = (req.query.q || '').trim();
     const type = req.query.type || 'web';   // web / news / images
@@ -43,7 +44,6 @@ app.get('/api/search', async (req, res) => {
 
         const data = await tavilyRes.json();
 
-        // 整理成前端好渲染的结构
         const results = (data.results || []).map(item => ({
             title: item.title || '',
             url: item.url || '',
@@ -60,23 +60,14 @@ app.get('/api/search', async (req, res) => {
         });
 
     } catch (e) {
-        console.error('服务器错误：', e);
+        console.error('搜索服务器错误：', e);
         res.status(500).json({ error: e.message });
     }
 });
 
-// 健康检查
-app.get('/', (req, res) => {
-    res.send('Tavily 搜索后端已运行');
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`服务器已启动，监听端口 ${PORT}`);
-});
-// ========== 翻译接口 ==========
+// ========== 翻译接口（MyMemory） ==========
 app.get('/api/translate', async (req, res) => {
-    const text = req.query.text || '';
+    const text = (req.query.text || '').trim();
     const to = req.query.to || 'zh-CN';
     const from = req.query.from || 'auto';
 
@@ -85,7 +76,10 @@ app.get('/api/translate', async (req, res) => {
     }
 
     try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
+        // MyMemory 需要明确的源语言。auto 时默认 en（多数搜索结果是英文）
+        const srcLang = from === 'auto' ? 'en' : from;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${srcLang}|${to}`;
+
         const r = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -97,18 +91,36 @@ app.get('/api/translate', async (req, res) => {
         }
 
         const data = await r.json();
-        // Google 返回格式：[[["译文","原文",...],...],...]
-        const translated = (data[0] || []).map(item => item[0]).filter(Boolean).join('');
-        const detectedLang = data[2] || from;
+
+        // MyMemory 返回格式：{ responseData: { translatedText: "..." }, responseStatus: 200 }
+        const translated = data?.responseData?.translatedText || '';
+
+        if (!translated) {
+            return res.status(500).json({
+                error: '翻译结果为空',
+                detail: data?.responseDetails || '未知错误'
+            });
+        }
 
         res.json({
             text: text,
             translated: translated,
-            from: detectedLang,
+            from: srcLang,
             to: to
         });
+
     } catch (e) {
         console.error('翻译失败：', e);
         res.status(500).json({ error: e.message });
     }
+});
+
+// ========== 健康检查 ==========
+app.get('/', (req, res) => {
+    res.send('Tavily 搜索后端 + 翻译服务 已运行');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`服务器已启动，监听端口 ${PORT}`);
 });
