@@ -65,10 +65,10 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// ========== 翻译接口（clients5） ==========
+// ========== 翻译接口（Google translate.googleapis.com） ==========
 app.get('/api/translate', async (req, res) => {
     const text = (req.query.text || '').trim();
-    const to = (req.query.to || 'zh-CN').replace('-CN', '');
+    const to = req.query.to || 'zh-CN';
     const from = req.query.from || 'auto';
 
     if (!text) {
@@ -76,15 +76,15 @@ app.get('/api/translate', async (req, res) => {
     }
 
     try {
-        const srcLang = from === 'auto' ? 'auto' : from;
-        const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${srcLang}&tl=${to}&q=${encodeURIComponent(text)}`;
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
 
         const r = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
+                'Accept': '*/*',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Referer': 'https://www.google.com/'
+                'Referer': 'https://translate.google.com/',
+                'Origin': 'https://translate.google.com'
             }
         });
 
@@ -94,13 +94,13 @@ app.get('/api/translate', async (req, res) => {
 
         const data = await r.json();
 
+        // Google 标准返回格式：[[["译文","原文",null,null,...],...], null, "en", ...]
         let translated = '';
-        if (Array.isArray(data)) {
-            if (Array.isArray(data[0])) {
-                translated = (data[0] || []).map(item => item[0] || '').join('');
-            } else {
-                translated = data[0] || '';
-            }
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+            translated = data[0]
+                .filter(item => Array.isArray(item) && item[0])
+                .map(item => item[0])
+                .join('');
         }
 
         if (!translated) {
@@ -113,7 +113,7 @@ app.get('/api/translate', async (req, res) => {
         res.json({
             text: text,
             translated: translated,
-            from: srcLang,
+            from: data[2] || from,
             to: to
         });
 
