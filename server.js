@@ -65,10 +65,10 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// ========== 翻译接口（Google translate.googleapis.com） ==========
+// ========== 翻译接口（Bing 翻译） ==========
 app.get('/api/translate', async (req, res) => {
     const text = (req.query.text || '').trim();
-    const to = req.query.to || 'zh-CN';
+    const to = (req.query.to || 'zh-Hans').replace('zh-CN', 'zh-Hans');
     const from = req.query.from || 'auto';
 
     if (!text) {
@@ -76,16 +76,25 @@ app.get('/api/translate', async (req, res) => {
     }
 
     try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
+        // Bing 翻译公开接口（未公开 API，但长期可用）
+        const url = `https://cn.bing.com/ttranslatev3?isVertical=1&&IG=1&IID=translator.5028.1`;
+
+        const params = new URLSearchParams();
+        params.append('fromLang', from === 'auto' ? 'auto-detect' : from);
+        params.append('text', text);
+        params.append('to', to);
+        params.append('token', '');      // Bing 有时需要 token，先留空试试
 
         const r = await fetch(url, {
+            method: 'POST',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Referer': 'https://translate.google.com/',
-                'Origin': 'https://translate.google.com'
-            }
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+                'Referer': 'https://cn.bing.com/translator',
+                'Origin': 'https://cn.bing.com'
+            },
+            body: params.toString()
         });
 
         if (!r.ok) {
@@ -94,26 +103,23 @@ app.get('/api/translate', async (req, res) => {
 
         const data = await r.json();
 
-        // Google 标准返回格式：[[["译文","原文",null,null,...],...], null, "en", ...]
+        // Bing 返回格式：[{ detectedLanguage: {...}, translations: [{ text: "译文", to: "zh-Hans" }] }]
         let translated = '';
-        if (Array.isArray(data) && Array.isArray(data[0])) {
-            translated = data[0]
-                .filter(item => Array.isArray(item) && item[0])
-                .map(item => item[0])
-                .join('');
+        if (Array.isArray(data) && data[0] && Array.isArray(data[0].translations)) {
+            translated = data[0].translations.map(t => t.text || '').join('');
         }
 
         if (!translated) {
             return res.status(500).json({
                 error: '翻译结果为空',
-                detail: JSON.stringify(data).substring(0, 200)
+                detail: JSON.stringify(data).substring(0, 300)
             });
         }
 
         res.json({
             text: text,
             translated: translated,
-            from: data[2] || from,
+            from: (data[0] && data[0].detectedLanguage && data[0].detectedLanguage.language) || from,
             to: to
         });
 
